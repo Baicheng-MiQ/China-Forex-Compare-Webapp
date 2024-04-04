@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>汇率比较</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://unpkg.com/petite-vue"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .highlight {
+      background-color: #95cdff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="p-4 mx-auto max-w-[768px] text-lg flex flex-col"  @vue:mounted="fetchRates">
+    <div class="flex flex-row justify-between items-center">
+      <div class="mb-4">
+        <label for="currency" class="block mb-2 font-bold text-gray-700">选择货币:</label>
+        <select id="currency" v-model="currency" @change="fetchRates"
+        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 p-10">
+          <option value="USD">美元</option>
+          <option value="HKD">港币</option>
+          <option value="JPY">日元</option>
+          <option value="GBP">英镑</option>
+          <option value="EUR">欧元</option>
+          <option value="AUD">澳元</option>
+          <option value="CAD">加币</option>
+          <option value="SGD">新币</option>
+        </select>
+      </div>
+      <!-- <button @click="fetchRates" class="px-4 py-2 mt-4 mx-2 font-bold text-white bg-blue-500 rounded-md hover:bg-blue-600 focus:outline-none focus:shadow-outline">获取</button> -->
+      <button @click="reloadRates" class="underline text-gray-100
+      ">更新</button>
+    </div>
+    <p>
+      上次更新：{{ lastUpdated  }}
+    </p>
+    <table class="w-full mt-4 border-collapse">
+      <thead>
+        <tr class="bg-gray-100">
+          <th class="px-4 py-2 text-left">银行</th>
+          <th class="px-4 py-2 text-left">现汇买入</th>
+          <th class="px-4 py-2 text-left">现汇卖出</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="rate in rates" class="border-t">
+          <td class="px-4 py-2">{{ rate.Bank }}</td>
+          <td class="px-4 py-2" :class="{ highlight: rate.TransferBuyingRate === maxBuyingRate }">{{ rate.TransferBuyingRate }}</td>
+          <td class="px-4 py-2" :class="{ highlight: rate.TransferSellingRate === minSellingRate }">{{ rate.TransferSellingRate }}</td>
+        </tr>
+      </tbody>
+    </table>
+    
+
+    <div v-if="rates.length > 1" class="mt-8">
+      <h2 class="text-xl font-bold mb-4">货币换算</h2>
+      <div class="mb-4">
+        <div class="">
+          <label for="amount" class="block mb-2 font-bold text-gray-700">用人民币换</label>
+          <input id="amount" type="number" v-model="amount" class="w-fit px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 mx-auto">
+          <span class="px-3 py-2 bg-gray-200 text-gray-700 rounded-r-md font-bold">{{ currency }}</span>
+        </div>
+      </div>
+
+      <div class="flex flex-row space-x-4">
+        <div class="mb-4">
+          <label for="bestSellingBank" class="block mb-2 font-bold text-gray-700"></label>
+          <select id="bestSellingBank" v-model="bestSellingBank" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option v-for="rate in rates" :value="rate.Bank">{{ rate.Bank }}</option>
+          </select>
+          <p class="ml-1 whitespace-nowrap">
+            <code class="text-red-600 font-bold">{{ amount * rates.find(rate => rate.Bank === bestSellingBank)?.TransferSellingRate }} ¥ </code>
+          </p>
+        </div>
+        <p class="my-3 font-bold text-lg">
+          比
+        </p>
+        <div class="mb-4">
+          <label for="worstSellingBank" class="block mb-2 font-bold text-gray-700"></label>
+          <div class="flex flex-col">
+            <select id="worstSellingBank" v-model="worstSellingBank" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option v-for="rate in rates" :value="rate.Bank">{{ rate.Bank }}</option>
+            </select>
+            <p class="ml-1 whitespace-nowrap">
+              <code class="text-green-600 font-bold">{{ amount * rates.find(rate => rate.Bank === worstSellingBank)?.TransferSellingRate }} ¥ </code>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="savings < 0" class="text-4xl font-bold text-green-600">损失 {{ Math.abs(savings) }} ¥</p>
+      <p class="text-4xl font-bold text-red-600" v-else>
+        省 {{ savings }} ¥
+      </p>
+    </div>
+  </div>
+
+  <script>
+    PetiteVue.createApp({
+      currency: 'USD',
+      rates: [],
+      amount: 10000,
+      lastUpdated: '加载中...',
+      selectedCurrency: '',
+      bestSellingBank: '',
+      worstSellingBank: '',
+      fetchRates() {
+        this.rates = [{ Bank: '加载中...', TransferBuyingRate: "加载中...", TransferSellingRate: "加载中..." }];
+        fetch(`/api/rates/${this.currency}`)
+          .then(response => response.json())
+          .then(data => {
+            this.rates = data.rates;
+            this.selectedCurrency = this.rates[0].Bank;
+            this.bestSellingBank = this.rates.find(rate => rate.TransferSellingRate === this.minSellingRate)?.Bank;
+            this.worstSellingBank = this.rates.find(rate => rate.TransferSellingRate === this.maxSellingRate)?.Bank;
+            this.lastUpdated = data.last_update;
+          });
+      },
+      reloadRates() {
+        this.rates =[{ Bank: '加载中...', TransferBuyingRate: "加载中...", TransferSellingRate: "加载中..." }];
+        fetch("/api/reload")
+          .then(response => response.json())
+          .then(data => {
+            this.fetchRates();
+          });
+      },
+      get minSellingRate() {
+        return Math.min(...this.rates.map(rate => rate.TransferSellingRate));
+      },
+      get maxSellingRate() {
+        return Math.max(...this.rates.map(rate => rate.TransferSellingRate));
+      },
+      get maxBuyingRate() {
+        return Math.max(...this.rates.map(rate => rate.TransferBuyingRate));
+      },
+      get minBuyingRate() {
+        return Math.min(...this.rates.map(rate => rate.TransferBuyingRate));
+      },
+
+      get savings() {
+        const bestRate = this.rates.find(rate => rate.Bank === this.bestSellingBank)?.TransferSellingRate;
+        const worstRate = this.rates.find(rate => rate.Bank === this.worstSellingBank)?.TransferSellingRate;
+        if (bestRate && worstRate) {
+          return ((worstRate - bestRate) * this.amount).toFixed(2);
+        }
+        return '0.00';
+      }
+
+    }).mount();
+  </script>
+</body>
+</html>
